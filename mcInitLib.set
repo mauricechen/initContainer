@@ -1,0 +1,707 @@
+#!/bin/sh
+
+DEFDRIVER=""; export DEFDRIVER
+MYDOMAIN=""; export MYDOMAIN
+PACKAGE_DIR=~/software/Package
+INSTALL_DIR=~/software
+GITLAB_DIR="/data/gitlab"; export GITLAB_DIR
+HARBOR_DIR="/data/registry"; export HARBOR_DIR
+__initSrvEnv()
+{
+    srvType="${1}"
+    srvPort="${2}"
+
+
+    srvHost=`echo $srvType.$MYDOMAIN`
+    if [ "$val" == "" ]; then
+        echo "$IP   $srvHost" >> /tmp/.hosts
+    else
+        echo "$tmpIP        $srvHost"  >> /tmp/.hosts
+    fi
+
+
+
+    if [ "${srvType}" != "${srvPort}" ]; then  srvPort${srvPort} ; fi
+    if [ "${srvType}" == "gitlab" ]; then 
+       echo "ServiceHost_gitlab=$srvType.$MYDOMAIN; export ServiceHost_$srvType"
+       echo "ServicePort_gitlab=9000; export ServicePort_gitlab"
+       echo "ServiceSSLPort_gitlab=9443; export ServiceSSLPort_gitlab"
+       echo "ServiceSSHPort_gitlab=9022; export ServiceSSGPort_gitlab"
+       return;
+    elif [ "${srvType}" == "jenkins" ]; then 
+       echo "ServicePort_jenkins=9001; export ServicePort_jenkins"
+       echo "ServiceAgentPort_jenkins=10000; export ServiceAgentPort_jenkins"
+    elif [ "${srvType}" == "harbor" ];  then 
+       echo "ServicePort_harbor=9002; export ServicePort_harbor";
+    elif [ "${srvType}" == "registry" ];  then srvPort="9001";
+    else srvPort="7999";
+    fi
+
+    echo "ServiceHost_$srvType=$srvType.$MYDOMAIN; export ServiceHost_$srvType"
+    echo "ServicePort_$srvType=$srvPort; export ServicePort_$srvType"
+
+
+}
+__initEnvM()
+{
+    _cmdOS=`grep '^NAME=' /etc/os-release `
+    _cmdVersion=`grep '^VERSION_ID=' /etc/os-release `
+    OS=`eval "$_cmdOS";echo ${NAME}|cut -d' ' -f1 `; export OS
+    OSVer=`eval "$_cmdVersion";echo ${VERSION_ID} `; export OSVer
+    OSKernel=`uname -s`; export OSKernel
+    OSMachine=`uname -m`; export OSMachine
+    if [ -d $PACKAGE_DIR ]; then mkdir -p $PACKAGE_DIR ; fi
+    if [ -d $INSTALL_DIR ]; then mkdir -p $INSTALL_DIR ; fi
+    if [ -d $GITLAB_DIR ]; then mkdir -p $GITLAB_DIR ; fi
+    mkdir -p $PACKAGE_DIR
+    INTERFACE=`grep INTERFACE= conf/hosts.cfg|cut -d= -f 2`
+    MYDOMAIN=`grep MYDOMAIN= conf/hosts.cfg|cut -d= -f 2`; export MYDOMAIN
+    #IP=`sudo nmcli connection show $INTERFACE | grep ipv4.address|cut -d':' -f2|sed -e 's@ @@g' -e 's@/.*@@g'`
+    IP=`hostname -I|tr ' ' '\n'|egrep -v ':|127'|head -1`
+    OS_IP=$IP ; export OS_IP
+    egrep -v "$MYDOMAIN|master" /etc/hosts > /tmp/.hosts
+    echo "$IP	master" >> /tmp/.hosts
+    echo "$IP	$MYDOMAIN" >> /tmp/.hosts
+    egrep -v "MYDOMAIN=|SERVICE_LIST=|TYPE=|INTERFACE=" conf/hosts.cfg > /tmp/.ServiceCfg
+    declare -a list=(`grep 'SERVICE_LIST=' conf/hosts.cfg|sed -e 's@.*=@@g'`)
+    for i in "${list[@]}"; do
+        val=`grep "$i" /tmp/.ServiceCfg`
+        srvType=`echo $i|cut -d: -f1`
+        srvPort=`echo $i|cut -d: -f2`
+        eval $(__initSrvEnv "$srvType" "$srvPort")
+    done
+    sudo hostnamectl set-hostname master
+    sudo mv /tmp/.hosts /etc/hosts
+    sudo grep 'net.ipv4.ip_forward=1' /etc/sysctl.conf;
+    if [ $? != 0 ]; then
+        sudo /bin/su -c "echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf"
+    fi;
+}
+
+__installEnvM()
+{
+    #sudo yum install -y java-11-openjdk-devel
+    sudo yum install -y java-11-openjdk
+
+    sudo yum install -y python3
+    #update-alternatives --install /usr/bin/python python /usr/bin/python2.7 2
+    #update-alternatives --install /usr/bin/python python /usr/bin/python3.6 1
+    #update-alternatives --display python
+
+    sudo rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO
+    curl -s https://mirror.go-repo.io/centos/go-repo.repo | sudo tee /etc/yum.repos.d/go-repo.repo
+    sudo yum install -y golang
+
+    curl -sL https://rpm.nodesource.com/setup_10.x | sudo bash -
+    sudo yum install -y  nodejs
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
+
+    sudo systemctl stop firewalld
+    sudo systemctl disable --now firewalld
+    sudo setenforce 0
+    sudo sed -i 's/SELINUX=.*/SELINUX=disabled/g' /etc/sysconfig/selinux
+    sudo sed -i 's/SELINUXTYPE=.*/SELINUXTYPE=targeted/g' /etc/sysconfig/selinux
+    sudo mkdir -p /usr/local/bin
+    mkdir -p `pwd`/tmp
+}
+__initEnvM
+source mcInitLib${OS}.set
+
+__configContainer()
+{
+    _container=$1
+    ${_container} stop
+    ${_container} delete --force --clear-cache
+    sudo service libvirtd restart
+    echo $_container |grep minishift >/dev/null
+    if [ $? ]; then
+        ${_container} config set openshift-version v3.10.0
+    fi
+    ${_container} addons install --defaults
+    ${_container} addons enable admin-user
+    #   ${_container} config set profile ${_container}
+    ${_container} config set cpus 2
+    ${_container} config set memory 4800mb
+    ${_container} config set disk-size 40gb
+    #   ${_container} config set image-mirror-country tw
+    ${_container} start --profile ${_container} --alsologtostderr -v=3 --show-libmachine-logs -v5
+    #${_container} start
+    if [ $? -ne 0 ]; then echo "ERROR: ${_container} start "; exit 1; fi;
+    ${_container} addons apply admin-user
+    ${_container} oc-env
+    ${_container} stop
+}
+__runContainerCmd()
+{
+    _container=$1
+    _cmd=$2
+    ${_container} ${_cmd}
+}
+__installGitlabByDocker()
+{
+    docker pull gitlab/gitlab-ce
+    sudo docker run -tid \
+        –hostname gitlab.${MYDOMAINE} \
+        –p ${ServiceSSLPort_gitlab}:443 -p ${ServicePort_gitlab}:80 -p ${ServiceSSHPort_gitlab}:22 \
+        –-name gitlab  –restart always  \
+        –v ${GITLAB_DIR}/config:/etc/gitlab  \
+        –v ${GITLAB_DIR}/logs:/var/log/gitlab  \
+        –v ${GITLAB_DIR}/data:/var/opt/gitlab \
+        gitlab/gitlab-ce:latest
+}
+__installGitlabByYum()
+{
+    #sudo EXTERNAL_URL="http://gitlab.example.com" yum install -y gitlab-ee
+    #curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-ee/script.rpm.sh | sudo bash
+    curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.rpm.sh | sudo bash
+    curl -sS https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh | sudo bash
+
+    sudo yum makecache
+    sudo yum install -y gitlab-ce gitlab-ci-multi-runner
+
+
+    # /etc/gitlab/gitlab.rb
+    sudo cat /etc/gitlab/gitlab.rb | sed -e "s@^external_url .*@external_url 'http://gitlab.${MYDOMAIN}:${ServicePort_gitlab}'@g" -e "s@^# gitlab_rails\[.smtp_@gitlab_rails\[\'smtp_@g" \
+        egrep -v 'gitlab_email_from|smtp_domain' > .gitlab.rb
+    echo "gitlab_rails['gitlab_email_from'] = 'test@${MYDOMAIN}'" >> .gitlab.rb
+    echo "gitlab_rails['smtp_domain'] = 'exmail.${MYDOMAIN}'" >> .gitlab.rb
+    sudo mv .gitlab.rb /etc/gitlab/gitlab.rb
+
+    sudo gitlab-ctl reconfigure
+}
+__installJenkinsByDocker()
+{
+    docker pull jenkinsci/blueocean
+    sudo docker run -tid \
+        –hostname jenkins.${MYDOMAINE} \
+        –p ${ServicePort_jenkins}:8080  -p ${ServiceAgentPort_jenkins}:50000   \
+        –-name jenkins  –restart always  \
+        -v ${JENKINS_DIR}:/var/jenkins_home   \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        jenkinsci/blueocean:latest
+
+}
+__setProfile()
+{
+    cat /etc/profile|egrep -v  'KUBECONFIG=|CURL_CA_BUNDLE=' > /tmp/.profile
+    echo "PATH=\$PATH:/usr/local/bin # KUBECONFIG=
+    #export KUBECONFIG=/opt/openshift/openshift.local.config/master/admin.kubeconfig
+    #export CURL_CA_BUNDLE=/opt/openshift/openshift.local.config/master/ca.crt
+    " >> /tmp/.profile
+
+    sudo mv /tmp/.profile /etc/profile
+    source /etc/profile
+
+}
+__installMinikube()
+{
+    __installKube
+
+    packageName=minikube
+    curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
+    #osudo minikube config set vm-driver none
+    __setProfile
+    #minikube start --profile minishift --alsologtostderr -v=3 --show-libmachine-logs -v5
+    minikube version
+    minikube status
+}
+
+__installMinishift()
+{
+    __installKube
+    #install minishift
+
+    packageName=minishift
+    name="minishift-1.34.2-linux-amd64.tgz"
+    if [ ! -f ${PACKAGE_DIR}/${name} ]; then
+        url=`curl -s https://api.github.com/repos/minishift/minishift/releases/latest|egrep -i "browser_download_url.*${OSKernel}" | cut -d '"' -f 4|grep '\.tgz$'`
+        name=`basename $url`
+        version=`echo ${name}|sed -e 's/.*-v//g' -e 's/.tgz//g'`
+        curl -L $url > ${PACKAGE_DIR}/${name} &&
+        echo ""
+    fi
+    tar -C $INSTALL_DIR -zxvf $PACKAGE_DIR/${name}
+    sudo cp -f ${INSTALL_DIR}/`basename $name .tgz`/${packageName} /usr/local/bin/${packageName}
+
+    __setProfile
+    #
+    minishift version
+    minishift status
+    #kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml
+}
+__startMinikube()
+{
+    runScript=/tmp/.startMinikube.sh
+    rm -f $runScript
+    #minikube config set driver $DEFDRIVER
+    cat <<EOF > $runScript
+
+PATH=$PATH
+minikube start --profile minishift --alsologtostderr -v=3 --show-libmachine-logs -v5
+if [ $? -ne 0 ]; then echo "ERROR: ${_container} start "; exit 1; fi;
+kubectl config use-context minishift
+minikube status
+minikube service list
+EOF
+    chmod u+x $runScript
+    sudo su - $USER  bash -c "$runScript"
+    minikube status
+    sudo systemctl enable --now kubelet
+    sudo systemctl start kubelet
+    #
+    #kubectl version
+    #kubectl cluster-info
+    #kubectl get all
+
+    #__runContainerCmd  minikube dashboard
+}
+__startMinishift()
+{
+    runScript=/tmp/.startMinishift.sh
+    sudo rm -f $runScript
+    cat <<EOF > $runScript
+PATH=$PATH
+minishift status
+minishift start --profile minishift --show-libmachine-logs -v5 --alsologtostderr -v=5
+if [ $? -ne 0 ]; then echo "ERROR: ${_container} start "; exit 1; fi;
+minishift status
+minishift service list
+EOF
+    chmod u+x $runScript
+    sudo su - $USER  bash -c "$runScript"
+    minishift status
+    sudo systemctl enable --now kubelet
+    sudo systemctl start kubelet
+    #
+    #kubectl version
+    #kubectl cluster-info
+    #kubectl get all
+    #__runContainerCmd  minishift dashboard
+
+}
+__genConfFile()
+{
+    inConfFile="$1"
+    outConfFile="$2"
+    eval  "echo \"$(`cat ${inConfFile}`)\"" > "${outConfFile}"
+}
+__installHelm3()
+{
+    if [ -f /usr/local/bin/helm ]; then
+        /usr/local/bin/helm version |grep 'V3' >/dev/null
+        if [ $? ]; then return 0; fi
+        rm -rf /usr/local/bin/helm
+    fi
+
+    sudo curl -L https://mirror.openshift.com/pub/openshift-v4/clients/helm/latest/helm-linux-amd64 -o /usr/local/bin/helm
+    sudo chmod +x /usr/local/bin/helm
+    /usr/local/bin/helm version
+
+    eval $(minishift oc-env)
+    oc login -u system:admin
+
+    helm plugin install https://github.com/chartmuseum/helm-push
+
+    helm repo add center https://repo.chartcenter.io
+    helm repo add harbor https://helm.goharbor.io
+    helm repo add nginx-stable https://helm.nginx.com/stable
+    helm repo add gitlab https://charts.gitlab.io
+    helm repo add bitnami https://charts.bitnami.com/bitnami
+    helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+    helm repo update
+    echo "remote repo"
+    helm repo list
+    echo "add local repo"
+    (
+        mkdir -p /dcos/appstore/local-repo
+        nohup helm serve --address 0.0.0.0:8879 --repo-path /dcos/appstore/local-repo &
+        helm repo add local-repo http://${MYDOMAIN}:8879   "local-repo" has been added to your repositorie
+
+        # add charts https://github.com/helm/charts
+        ##cp -r jenkins /dcos/appstore/local-repo/
+        ##cd /dcos/appstore/local-repo
+        ##helm package jenkins --save=false
+
+
+        cd /dcos/appstore/local-repo
+        helm repo index --url=http://10.142.21.21:8879 .
+        helm repo update
+    )
+    helm repo list
+
+    helm search repo center/
+    helm search repo center/rancher
+    helm search repo harbor
+    helm search repo prometheus-operator
+    helm search repo gitlab-runner
+
+    helm fetch goharbor/harbor
+
+}
+__initHttpsCert()
+{
+    (
+        fun=1
+        mkdir -p /data/cert && chmod -R 777 /data/cert && cd /data/cert
+        if [ $fun -eq 1 ]; then
+            openssl req -x509 -sha256 -nodes -days 3650 -newkey rsa:2048 -keyout harbor.key -out harbor.crt -subj "/CN=harbor.${MYDOMAIN}"
+        elif [ $fun -eq 2 ]; then
+            openssl genrsa -des3 -out harbor.key 2048
+            openssl req -sha512 -new \
+                -subj "/C=CN/ST=JS/L=WX/O=zwx/OU=jhmy/CN=hub.jhmy.com" \
+                -key harbor.key \
+                -out harbor.csr
+            cp harbor.key harbor.key.org
+            openssl rsa -in harbor.key.org -out harbor.key
+            openssl x509 -req -days 365 -in harbor.csr -signkey harbor.key -out harbor.crt
+        fi
+    )
+}
+__installHarborByDocker()
+{
+   sudo docker run -tid \
+          --name registry 
+          --restart=always \
+          -p ${ServicePort_harbor}:5000 \
+          -v ${HARBOR_DIR}:/var/lib/registry \
+          registry
+   sudo tee /etc/docker/daemon.json<<EOF
+        {
+           "insecure-registries":[
+              "$ServiceHost_harbor:$ServicePort_harbor"
+           ]
+        }
+EOF
+
+}
+__installHarborByOffline()
+{
+    packageName=harbor
+    url=`curl -s https://api.github.com/repos/goharbor/harbor/releases/latest |egrep -i 'browser_download_url.*offline' | cut -d '"' -f 4 | grep '\.tgz$'`
+    #url="https://github.com/vmware/harbor/releases/download/v1.2.0/harbor-offline-installer-v1.2.0.tgz"
+    name=`basename $url`
+    version=`echo ${name}|sed -e 's/.*-v//g' -e 's/.tgz//g'`
+    if [ ! -f "${PACKAGE_DIR}/${name}" ]; then
+        curl -L $url > ${PACKAGE_DIR}/${name} &&
+        echo "OK"
+    fi
+    mkdir -p tmp;tar -C `pwd`/tmp -zxvf $PACKAGE_DIR/${name}
+    harborFile=`pwd`/conf/harbor.yml
+    runScript=/tmp/.installHarbor.sh
+    rm -f $runScript
+    cat <<EOF > $runScript
+    cd `pwd`/tmp/$packageName
+    cat $harborFile|sed -e 's@hostname:.*@hostname: harbor.${MYDOMAIN}@g' -e 's@ServicePort_harbor@${ServicePort_harbor}@g' \
+                   |sed -e 's@certificate:.*@certificate: /data/cert/harbor.crt@g' -e 's@private_key:.*@private_key: /data/cert/harbor.key@g' \
+                     >  harbor.yml
+    ./prepare
+    ./install.sh   --with-clair --with-chartmuseum
+EOF
+    chmod u+x $runScript
+    sudo su - root bash -c "$runScript"
+    helm repo add  --username=admin --password=Harbor12345 myRepo http://harbor.${MYDOMAIN}:${ServicePort_harbor}/chartrepo/myRepo
+    # helm create myApp
+    # helm push --username=admin --password=Harbor12345 myApp myRepo
+}
+
+__installHarborByHelm()
+{
+    eval $(minishift oc-env)
+    oc login -u system:admin
+    (
+        cd tmp
+        rm -rf harbor-*.tgz
+        helm search repo harbor
+        helm show values harbor/harbor > harbor_values.cfg
+        helm fetch harbor/harbor
+        tar xvf harbor-*.tgz
+        cd harbor
+        cat values.yaml|sed -e "s@externalURL: https://core.harbor.domain@externalURL: https://harbor.${MYDOMAIN}:${ServicePort_harbor}@g" |\
+            sed -e "s@storageClass: \"\"@storageClass: \"harbor-data\"@g" -e "s@.harbor.domain@.${MYDOMAIN}@g" > values1.yaml
+        kubectl create namespace harbor-system
+        helm install --dry-run --debug -g harbor/harbor -f values.yaml  --generate-name
+
+        #      helm install harbor  --dry-run --debug --namespace harbor-system harbor/harbor \
+            # 		--set expose.type=nodePort \
+            #  		--set expose.tls.enabled=false \
+            #  		--set persistence.enabled=false \
+            #  		--set externalURL=https://harbor.${MYDOMAIN}:${ServicePort_harbor} \
+            #                --set ingress.hosts.core=harbor.${MYDOMAIN} \
+            #                --set ingress.hosts.notary=harbor.${MYDOMAIN} \
+            #  		--set harborAdminPassword=Harbor12345 \
+            #		--set persistence.persistentVolumeClaim.registry.storageClass=harbor-data, \
+            #		--set persistence.persistentVolumeClaim.chartmuseum.storageClass=harbor-data, \
+            #		--set persistence.persistentVolumeClaim.jobservice.storageClass=harbor-data,\
+            #		--set persistence.persistentVolumeClaim.database.storageClass=harbor-data, \
+            #		--set persistence.persistentVolumeClaim.redis.storageClass=harbor-data
+    )
+    helm repo add test http://harbor.${MYDOMAIN}:${ServicePort_harbor}/chartrepo/chart_repo
+    helm plugin install https://github.com/chartmuseum/helm-push
+}
+__deleteSampleObj()
+{
+    kubectl delete pods,services,Deployment -l name=demoApp
+}
+__checkSampleStatus()
+{
+    kubectl get pods
+    kubectl get svc
+    kubectl get deploy
+    kubectl get ingress
+}
+__installSample()
+{
+    echo 'init'
+    __deleteSampleObj
+    echo 'before'
+    __checkSampleStatus
+    echo 'create '
+    if [ -f conf/sample${1}_Pod.yaml ]; then kubectl create -f conf/sample${1}_Pod.yaml; fi
+    if [ -f conf/sample${1}_Service.yaml ]; then kubectl create -f conf/sample${1}_Service.yaml; fi
+    if [ -f conf/sample${1}_Deployment.yaml ]; then kubectl create -f conf/sample${1}_Deployment.yaml; fi
+    if [ -f conf/sample${1}_Ingress.yaml; ]; then kubectl create -f conf/sample${1}_Ingress.yaml; fi
+    echo 'list '
+    __checkSampleStatus
+}
+__checkStatus()
+{
+    minishift version
+    minishift status
+    minishift ip
+    minishift dashboard
+    kubectl version
+    kubectl get pods --all-namespaces
+    kubectl get all
+    kubectl get pods
+    kubectl get svc
+    kubectl get deploy
+    kubectl get ingress
+
+    helm repo list
+    helm repo update
+}
+__installNginx()
+{
+    helm search repo nginx-ingress
+    helm show values nginx-stable/nginx-ingress
+    helm install gateway nginx-stable/nginx-ingress \
+        --set controller.service.type=NodePort \
+        --set controller.service.httpPort.nodePort=30080 \
+        --set controller.service.httpsPort.nodePort=30443
+    kubectl get all
+    curl http://${MYDOMAIN}:30080
+}
+__installHarborHelm()
+{
+    __installHelm3
+    __installHarborByDocker
+}
+__installSeata()
+{
+    (
+        git clone https://github.com/seata/seata/tree/develop/script/server
+        cd ./script/server/helm/seata-server
+        helm install seata-server ./seata-server
+    )
+    (
+        git clone https://github.com/seata/seata-k8s
+    )
+}
+__installWordpress()
+{
+    #https://www.qikqiak.com/k8s-book/docs/31.%E9%83%A8%E7%BD%B2%20Wordpress%20%E7%A4%BA%E4%BE%8B.html`
+    kubectl create namespace blog
+    kubectl create -f conf/wrodpress-pod.yaml
+    kubectl describe pod wordpress -n blog
+
+    kubectl create -f conf/wordpress-db.yaml
+    kubectl describe svc mysql -n blog
+
+    kubectl create -f wordpress.yaml
+    kubectl get pods -n blog
+    kubectl apply -f wordpress.yaml
+}
+__installNodeexporter()
+{
+    echo "Dodo"
+}
+__installPrometheusByDocker()
+{
+    (
+        sudo mkdir -p /usr/local/src/config/
+        sudo mkdir -p /prom/prometheus/data  /prom/grafana
+        sudo cp conf/prometheus/*.yml /usr/local/src/config/
+        sudo chown -R ${USER}:${USER} /usr/local/src/config
+        cd conf/prometheus
+        docker-compose up -d
+    )
+}
+__installPrometheus()
+{
+    packageName=prometheus
+    url=`curl -s  https://api.github.com/repos/prometheus/prometheus/releases/latest |egrep -i "browser_download_url.*${OSKernel}-amd64" | cut -d '"' -f 4 `
+    pathName=`dirname $url`
+    name=`basename $url`
+    version=`basename $pathName`
+    if [ ! -f "${PACKAGE_DIR}/${name}" ]; then
+        curl -L $url > ${PACKAGE_DIR}/${name} &&
+        echo "OK"
+    fi
+    (
+        mkdir -p tmp;tar -C `pwd`/tmp -zxvf $PACKAGE_DIR/${name}
+        cd `pwd`/tmp/prometheus*/
+        mv prometheus promtool /usr/local/bin/
+        mv prometheus.yml  /etc/prometheus/prometheus.yml
+        mv consoles/ console_libraries/ /etc/prometheus/
+
+        cat <<EOF > prometheus.service
+[Unit]
+Description=Prometheus
+Documentation=https://prometheus.io/docs/introduction/overview/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=prometheus
+Group=prometheus
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=/usr/local/bin/prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/var/lib/prometheus \
+  --web.console.templates=/etc/prometheus/consoles \
+  --web.console.libraries=/etc/prometheus/console_libraries \
+  --web.listen-address=0.0.0.0:"${ServicePort_prometheus}" \
+  --web.external-url=
+
+SyslogIdentifier=prometheus
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        for i in rules rules.d files_sd; do sudo chown -R prometheus:prometheus /etc/prometheus/${i}; done
+        for i in rules rules.d files_sd; do sudo chmod -R 775 /etc/prometheus/${i}; done
+        sudo chown -R prometheus:prometheus /var/lib/prometheus/
+    )
+
+}
+installSample()
+{
+    __installSample "$1"
+}
+installWordpress()
+{
+    __installWordpress
+}
+installSeata()
+{
+    __installSeata
+}
+#installNginx()
+#{
+#  __installNginx()
+#}
+installHelm()
+{
+    __installHelm3
+}
+installHarbor()
+{
+    __installHarborByDocker
+    #__installHarborByHelm
+}
+installHarborHelm()
+{
+    __installHarborHelm
+}
+installHypervisor()
+{
+    __installHypervisor
+}
+installPrometheus()
+{
+    __installPrometheusByDocker
+}
+installDocker()
+{
+    __installDocker
+}
+installGitlab()
+{
+    __installGitlabByDocker
+}
+installMinikube()
+{
+    _container="minikube"
+    DEFDRIVER=${1-docker}; export DEFDriver
+
+    #__InitEnv
+    __initEnv
+
+    #mkdir -p logs; rm -f logs/*
+    __installHypervisor
+
+    # Init Firewalld
+    #__initFirewalld
+
+    # Install Docker
+    __installDocker
+
+    #__initFirewalld
+    # Install Driver
+    __installDriverKVM
+    __installDriverKVM2
+    __installDriverVirtualbox
+    __installDriverVmware
+
+
+    # disable Firewarld
+    #__initFirewalld
+
+    __installMinikube
+    __configContainer "$_container"
+    __startMinikube
+    __installHarborHelm "$_container"
+    #__installGitlabByDocker
+}
+installMinishift()
+{
+    _container="minishift"
+    DEFDRIVER=${1-docker}; export DEFDriver
+    #__InitEnv
+    __initEnv
+
+    #__unInitEnv
+    #mkdir -p logs; rm -f logs/*
+
+    # Init
+    __installHypervisor
+    #__initEnv
+
+    # Init Firewalld
+    __initFirewalld
+
+    # Install Docker
+    __installDocker
+
+    # Install Driver
+    __installDriverKVM
+    __installDriverKVM2
+    __installDriverVirtualbox
+    __installDriverVmware
+
+    # install Docker
+    #__install${DEFDRIVER}
+
+    # disable Firewarld
+    #__initFirewalld
+
+    __installMinishift
+    __configContainer "$_container"
+    __startMinishift
+    __installHarborHelm "$_container"
+    __installGitlabByDocker
+    __installJenkinsByDocker
+}

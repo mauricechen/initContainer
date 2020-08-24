@@ -1,0 +1,256 @@
+#!/bin/env bash
+__initEnv()
+{
+    sudo yum clean all
+    if [ `echo "$PATH"|grep '/usr/bin'` > /dev/null ] ; then PATH=$PATH:/usr/bin; fi;
+    if [ `echo "$PATH"|grep '/usr/local/bin'` > /dev/null ] ; then PATH=$PATH:/usr/local/bin; fi;
+    sudo yum install -y curl, policycoreutils-python openssh-server openssh-clients wget tar postfix openssl openssl-devel
+    sudo yum update -y openssl openssl-devel
+    sudo yum groupinstall -y 'X Window System' 'GNOME'
+    sudo yum install -y firefox epel-release.noarch yum-utils device-mapper-persistent-data lvm2 conntrack
+    sudo yum install -y gcc python-devel
+    # enable sshd
+    sudo systemctl enable --now sshd
+    sudo systemctl start sshd
+
+    # enable dnsmasq
+    sudo yum install -y bind-utils dnsmasq
+
+    # install develop tools
+    sudo yum groupinstall -y "Development Tools"
+    sudo yum install -y libffi-devel
+
+    # install beautysh
+    sudo python3 -m pip install beautysh
+
+    # install Node.js
+    curl -sL https://rpm.nodesource.com/setup_14.x | sudo bash -
+    sudo yum install -y nodejs
+
+    # install shellcheck
+    if [ -d /snap ]; then sudo rm -f /snap ; fi
+    sudo yum install -y snapd
+    sudo systemctl enable --now snapd.socket
+    sudo ln -s /var/lib/snapd/snap /snap
+    sudo snap install shellcheck
+
+    #disable swap
+    sudo swapoff -a
+    sudo echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
+    sudo sh -c "
+     systemctl enable --now dnsmasq
+     systemctl start dnsmasq
+     systemctl stop firewalld
+     systemctl disable firewalld
+     setenforce 0
+    sed -i 's/SELINUX=.*/SELINUX=disabled/g' /etc/sysconfig/selinux"
+
+}
+
+__installHypervisor()
+{
+    sudo yum -y install epel-release
+    sudo yum -y install libvirt qemu-kvm virt-install virt-top libguestfs-tools bridge-utils
+    sudo lsmod | grep kvm
+    sudo systemctl start libvirtd
+    sudo systemctl enable --now libvirtd
+
+    sudo usermod -a -G libvirt $(whoami)
+    newgrp libvirt <<EOF
+exit
+EOF
+
+
+    sudo systemctl is-active libvirtd
+    sudo systemctl enable --now libvirtd
+    sudo systemctl start libvirtd
+    sudo virsh net-start default
+    sudo virsh net-autostart default
+}
+__unInitDocker()
+{
+    sudo yum remove docker \
+        docker-client \
+        docker-client-latest \
+        docker-common \
+        docker-latest \
+        docker-latest-logrotate \
+        docker-logrotate \
+        docker-selinux \
+        docker-engine-selinux \
+        docker-engine
+}
+__installDockerCompose()
+{
+    #install docker-compose
+    packageName=docker-compose
+    sudo rm -rf docker-compose /usr/local/bin/docker-compose
+    url=`curl -s https://api.github.com/repos/docker/compose/releases/latest |egrep -i "browser_download_url.*${OSKernel}-${OSMachine}" | cut -d '"' -f 4 | grep -v '\.sha256$'`
+    #url="`echo https://github.com/docker/compose/releases/download/1.25.0/docker-compose-${OSKernel}-${OSMachine}`"
+    pathName=`dirname $url`
+    name=`basename $url`
+    version=`basename $pathName`
+    mkdir -p $PACKAGE_DIR/docker-compose
+    if [ ! -f ${PACKAGE_DIR}/docker-compose/docker-compose-${OSKernel}-${OSMachine}.${version} ]; then
+        curl -L $url > ${PACKAGE_DIR}/docker-compose/docker-compose-${OSKernel}-${OSMachine}.${version}
+    fi
+    sudo cp ${PACKAGE_DIR}/docker-compose/docker-compose-${OSKernel}-${OSMachine}.${version} /usr/local/bin/docker-compose
+    sudo chmod 0555 /usr/local/bin/docker-compose
+}
+__installDockerMachine()
+{
+    #install docker-machine
+    packageName=docker-machine
+    sudo rm -rf docker-machine /usr/local/bin/docker-machine
+    url=`curl -s https://api.github.com/repos/docker/machine/releases/latest |egrep -i "browser_download_url.*${OSKernel}-${OSMachine}" | cut -d '"' -f 4 `
+    #url="`echo https://github.com/docker/machine/releases/download/v0.16.2/docker-machine-${OSKernel}-${OSMachine}`"
+    pathName=`dirname $url`
+    name=`basename $url`
+    version=`basename $pathName`
+    mkdir -p $PACKAGE_DIR/docker-machine
+    if [ ! -f ${PACKAGE_DIR}/docker-machine/docker-machine-${OSKernel}-${OSMachine}.${version} ]; then
+        curl -L $url > ${PACKAGE_DIR}/docker-machine/docker-machine-${OSKernel}-${OSMachine}.${version}
+    fi
+    sudo cp ${PACKAGE_DIR}/docker-machine/docker-machine-${OSKernel}-${OSMachine}.${version}  /usr/local/bin/docker-machine
+    sudo chmod 0555 /usr/local/bin/docker-machine
+}
+__installDocker()
+{
+    #init
+    sudo sed  -i  's/^SELINUX=.*/SELINUX=permissive/g'  /etc/selinux/config
+    #install docker
+    sudo yum-config-manager --add-repo http://download.docker.com/linux/centos/docker-ce.repo
+    sudo yum remove -y docker*
+    sudo yum install -y docker-ce docker-ce-cli containerd.io
+    sudo groupadd docker
+    sudo usermod -aG docker "$USER"
+    newgrp docker <<EOF
+exit
+EOF
+    #
+    sudo mkdir -p /etc/docker /etc/containers
+    #    sudo tee /etc/containers/registries.conf<<EOF
+    #	[registries.insecure]
+    #	registries = ['172.30.0.0/16']
+    #	EOF
+#    sudo tee /etc/docker/daemon.json<<EOF
+#	{
+#	   "insecure-registries":[
+#	      "$ServiceHost_registry:$ServicePort_registry"
+#	   ]
+#	}
+#EOF
+    #
+    sudo mkdir -p /opt/docker/registry/certs
+    cat conf/ssl.conf |sed -e "s@DNS.3 =.*@DNS.3 = $OS_IP@g" tmp/ssl.conf
+    sudo openssl req -x509 -days 3650 -nodes -newkey rsa:2048 -keyout /opt/docker/registry/certs/domain.key -out /opt/docker/registry/certs/domain.crt -config tmp/ssl.conf
+
+    #
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now docker
+    sudo systemctl is-active docker
+    sudo systemctl restart docker
+    sudo systemctl status docker
+    sudo chmod 777 /var/run/docker.sock
+
+    strConf="net.ipv4-ip_forward = 1"
+    grep "$strConf" /etc/sysctl.conf >/dev/null
+    if [ ! $? ]; then
+        echo "$strConf" >> /etc/sysctl.conf
+        sudo sysctl -p
+    fi
+
+    __installDockerCompose
+    __installDockerMachine
+
+}
+__installDriverKVM()
+{
+    curl -L https://github.com/dhiltgen/docker-machine-kvm/releases/download/v0.10.0/docker-machine-driver-kvm-centos7 > .docker-machine-driver-kvm
+    chmod +x .docker-machine-driver-kvm
+    sudo mv -f .docker-machine-driver-kvm /usr/local/bin/docker-machine-driver-kvm
+}
+__installDriverKVM2()
+{
+    curl -L https://storage.googleapis.com/minikube/releases/latest/docker-machine-driver-kvm2 > .docker-machine-driver-kvm2
+    chmod +x .docker-machine-driver-kvm2
+    sudo mv -f .docker-machine-driver-kvm2  /usr/local/bin/docker-machine-driver-kvm2
+}
+__installDriverVirtualbox()
+{
+    sudo wget http://download.virtualbox.org/virtualbox/rpm/el/virtualbox.repo -P /etc/yum.repos.d
+    sudo yum install -y VirtualBox-6.0
+    #sudo systemctl status vboxdrv
+    #rm -f Oracle_VM_VirtualBox_Extension_Pack-6.0.4.vbox-extpack
+    #wget http://download.virtualbox.org/virtualbox/6.0.4/Oracle_VM_VirtualBox_Extension_Pack-6.0.4.vbox-extpack
+    #echo "y" |sudo VBoxManage extpack install Oracle_VM_VirtualBox_Extension_Pack-6.0.4.vbox-extpack
+}
+__installDriverVmware()
+{
+    rm -f VMWARE-APPD-PACKAGING-GPG-RSA-KEY.pub
+    wget https://packages.vmware.com/appdefense/key/VMWARE-APPD-PACKAGING-GPG-RSA-KEY.pub
+    sudo rpm --import VMWARE-APPD-PACKAGING-GPG-RSA-KEY.pub
+    cat <<EOF > vmware.repo
+[repo-appdefense]
+name=AppDefense repo
+baseurl=https://packages.vmware.com/appdefense/latest/
+enabled=1
+gpgcheck=1
+
+[guest-introspection-for-vmware-nsx]
+name=Guest Introspection for VMware NSX
+baseurl=https://packages.vmware.com/appdefense/latest/guest-introspection-for-vmware-nsx/rhel/x86_64/
+enabled=1
+gpgcheck=1
+EOF
+    sudo mv vmware.repo /etc/yum.repos.d/vmware.repo
+    sudo yum install -y vmw-gl
+
+}
+
+__initMinikube()
+{
+    which minikube >/dev/null
+    if [ ${1} -eq 0  ]; then
+        minikube stop; minikube delete; minikube config unset embed-certs; minikube config unset cpus
+        minikube config unset memory; minikube config unset driver; minikube config unset vm-driver
+        sudo yum remove -y kubectl kubelet kubeadm
+    fi
+    sudo rm -rf /etc/kubernetes
+    rm -rf ~/.kube && rm -rf ~/.minikube && rm -rf /var/lib/minikube
+}
+
+__unInitdocker()
+{
+    sudo yum remove -y docker-ce
+}
+__initFirewalld()
+{
+    sudo sh -c "
+     systemctl stop firewalld
+     systemctl disable firewalld
+     setenforce 0
+    sed -i 's/SELINUX=.*/SELINUX=disabled/g' /etc/sysconfig/selinux"
+}
+__unInitEnv()
+{
+    __unInit"${DEFDRIVER}"
+}
+
+__installKube()
+{
+    cat <<EOF > kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+EOF
+    sudo mv kubernetes.repo /etc/yum.repos.d/kubernetes.repo
+    sudo yum install -y kubectl kubelet kubeadm
+    sudo systemctl enable --now kubelet
+
+}
+
