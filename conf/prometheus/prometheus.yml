@@ -6,21 +6,23 @@ global:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: [ 'alertmanager:9093' ]
+        - targets: [ 'localhost:9093' ]
 
 rule_files:
   - "node_down.yml"
+  - "node-exporter-alert-rules.yml"
+  - "node-exporter-record-rules.yml"
 
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
-      - targets: [ 'prometheus:9090' ]
+      - targets: [ 'localhost:9090' ]
 
   - job_name: 'cadvisor'
     static_configs:
-      - targets: [ 'cadvisor:8080' ]
+      - targets: [ 'localhost:8080' ]
 
   - job_name: 'node'
     static_configs:
-      - targets: [ 'node-exporter:9100' ]
+      - targets: [ 'localhost:9100' ]
 
