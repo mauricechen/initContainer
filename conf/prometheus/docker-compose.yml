@@ -1,88 +1,76 @@
 version: '3.7'
+networks:
+  monitor:
+    driver: bridge
 
 services:
-  node-exporter:
-    image: prom/node-exporter:latest
-    ports:
-      - "9100:9100"
-    networks:
-      - prom
-
-  dingtalk:
-    image: timonwong/prometheus-webhook-dingtalk:latest
-    volumes:
-      - type: bind
-        source: ./alertmanager/config.yml
-        target: /etc/prometheus-webhook-dingtalk/config.yml
-        read_only: true
-    ports:
-      - "8060:8060"
-    networks:
-      - prom
-
-  alertmanager:
-    depends_on:
-      - dingtalk
-    image: prom/alertmanager:latest
-    volumes:
-      - type: bind
-        source: ./alertmanager/alertmanager.yml
-        target: /etc/alertmanager/alertmanager.yml
-        read_only: true
-    ports:
-      - "9093:9093"
-      - "9094:9094"
-    networks:
-      - prom
-
   prometheus:
-    depends_on:
-      - alertmanager
-    image: prom/prometheus:latest
+    image: prom/prometheus
+    container_name: prometheus
+    hostname: prometheus
+    restart: unless-stopped
     volumes:
-      - type: bind
-        source: ./prometheus/prometheus.yml
-        target: /etc/prometheus/prometheus.yml
-        read_only: true
-      - type: bind
-        source: ./prometheus/alert-rules.yml
-        target: /etc/prometheus/alert-rules.yml
-        read_only: true
-      - type: volume
-        source: prometheus
-        target: /prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./node_down.yml:/etc/prometheus/node_down.yml
+      - ./memory_over.yml:/etc/prometheus/memory_over.yml
+      - ./load_over.yml:/etc/prometheus/load_over.yml
     ports:
       - "9090:9090"
     networks:
-      - prom
+      - monitor
 
-  grafana:
-    depends_on:
-      - prometheus
-    image: grafana/grafana:latest
+
+  alertmanager:
+    image: prom/alertmanager
+    container_name: alertmanager
+    restart: unless-stopped
+    ports:
+      - 9093:9093
     volumes:
-      - type: volume
-        source: grafana
-        target: /var/lib/grafana
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    networks:
+      - monitor
+      -
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    hostname: grafana
+    restart: unless-stopped
     ports:
       - "3000:3000"
     networks:
-      - prom
+      - monitor
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    cap_add:
+      - SYS_TIME
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    volumes:
+      - /proc:/host/proc
+      - /sys:/host/sys
+      - /:/rootfs
+    ports:
+      - 9100:9100
+    networks:
+      - monitor
 
-volumes:
-  prometheus:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /prom/prometheus/data
-  grafana:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /prom/grafana
-
-networks:
-  prom:
-    driver: bridge
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    hostname: cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - monitor

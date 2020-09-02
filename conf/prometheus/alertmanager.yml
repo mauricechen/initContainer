@@ -1,0 +1,39 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'smtp.gmail.com:578'
+  smtp_from: 'maurice.chen@mitac.com.tw'
+  smtp_auth_username: 'maurice.chen@mitac.com.tw'
+  smtp_auth_password: 'password'
+  smtp_require_tls: false
+
+route:
+  group_by: [ 'prometheus', 'alertname' ]
+  receiver: 'default'
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  receiver: slack-receiver
+  routes:
+    - receiver: 'null'
+      match:
+        alertname: Watchdog
+    - receiver: 'k8s-receiver'
+        group_wait: 30s
+        match:
+          prometheus: namespace/prometheus-operator-prometheus
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: [ 'alertname', 'instance' ]
+
+receivers:
+  - name: 'default'
+    email_configs:
+      - to: 'receiver@gmail.com'
+        send_resolved: true
+    webhook_configs:
+      - url: 'http://dingtalk:8060/dingtalk/webhook/send'
+        send_resolved: true
