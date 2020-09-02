@@ -241,7 +241,14 @@ __startMinikube()
 
 PATH=$PATH
 minikube start --profile minishift --alsologtostderr -v=3 --show-libmachine-logs -v5
-if [ $? -ne 0 ]; then echo "ERROR: ${_container} start "; exit 1; fi;
+if [ $? -ne 0 ]; then 
+   minikube stop
+   minikube status 
+   minikube start --profile minishift --alsologtostderr -v=3 --show-libmachine-logs -v5
+   if [ $? -ne 0 ]; then 
+     echo "ERROR: ${_container} start "; exit 1; 
+   fi
+fi;
 kubectl config use-context minishift
 minikube status
 minikube service list
@@ -266,7 +273,15 @@ __startMinishift()
 PATH=$PATH
 minishift status
 minishift start --profile minishift --show-libmachine-logs -v5 --alsologtostderr -v=5
-if [ $? -ne 0 ]; then echo "ERROR: ${_container} start "; exit 1; fi;
+if [ $? -ne 0 ]; then 
+   minishift stop
+   minishift status
+   minishift start --profile minishift --show-libmachine-logs -v5 --alsologtostderr -v=5
+   if [ $? -ne 0 ]; then 
+     echo "ERROR: ${_container} start "; 
+     exit 1; 
+   fi
+fi;
 minishift status
 minishift service list
 EOF
