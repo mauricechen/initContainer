@@ -1,4 +1,5 @@
 version: '3.7'
+
 networks:
   monitor:
     driver: bridge
@@ -30,7 +31,7 @@ services:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
     networks:
       - monitor
-      -
+
   grafana:
     image: grafana/grafana
     container_name: grafana
@@ -40,6 +41,7 @@ services:
       - "3000:3000"
     networks:
       - monitor
+
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter

@@ -5,7 +5,9 @@ MYDOMAIN=""; export MYDOMAIN
 PACKAGE_DIR=~/software/Package
 INSTALL_DIR=~/software
 GITLAB_DIR="/data/gitlab"; export GITLAB_DIR
+JENKINS_DIR="/data/jenkins"; export JENKINS_DIR
 HARBOR_DIR="/data/registry"; export HARBOR_DIR
+PROMETHEUS_DIR="/data/conf/prometheus"; export PROMETHEUS_DIR
 __initSrvEnv()
 {
     srvType="${1}"
@@ -53,6 +55,7 @@ __initEnvM()
     if [ -d $PACKAGE_DIR ]; then mkdir -p $PACKAGE_DIR ; fi
     if [ -d $INSTALL_DIR ]; then mkdir -p $INSTALL_DIR ; fi
     if [ -d $GITLAB_DIR ]; then mkdir -p $GITLAB_DIR ; fi
+    if [ -d $JENKINS_DIR ]; then mkdir -p $JENKINS_DIR ; fi
     mkdir -p $PACKAGE_DIR
     INTERFACE=`grep INTERFACE= conf/hosts.cfg|cut -d= -f 2`
     MYDOMAIN=`grep MYDOMAIN= conf/hosts.cfg|cut -d= -f 2`; export MYDOMAIN
@@ -528,12 +531,15 @@ __installNodeexporter()
 __installPrometheusByDocker()
 {
     (
-        sudo mkdir -p /usr/local/src/config/
-        sudo mkdir -p /prom/prometheus/data  /prom/grafana
-        sudo cp conf/prometheus/*.yml /usr/local/src/config/
-        sudo chown -R ${USER}:${USER} /usr/local/src/config
-        cd conf/prometheus
-        docker-compose up -d
+    sudo mkdir -p $PROMETHEUS_DIR
+    sudo mkdir -p $PROMETHEUS_DIR
+    sudo cp conf/prometheus/*.yml $PROMETHEUS_DIR 
+
+    sudo docker pull prom/node-exporter
+    sudo docker pull prom/prometheus
+    sudo docker pull grafana/grafana
+    sudo docker pull prom/alertmanager
+    docker-compose -f $PROMETHEUS_DIR/docker-compose-monitor.yml up -d 
     )
 }
 __installPrometheus()
@@ -704,4 +710,5 @@ installMinishift()
     __installHarborHelm "$_container"
     __installGitlabByDocker
     __installJenkinsByDocker
+    __installPrometheusByDocker
 }
