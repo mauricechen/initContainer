@@ -143,14 +143,11 @@ __runContainerCmd()
 __installGitlabByDocker()
 {
     docker pull gitlab/gitlab-ce
-    sudo docker run -tid \
-        –hostname gitlab.${MYDOMAINE} \
-        –p ${ServiceSSLPort_gitlab}:443 -p ${ServicePort_gitlab}:80 -p ${ServiceSSHPort_gitlab}:22 \
-        –-name gitlab  –restart always  \
-        –v ${GITLAB_DIR}/config:/etc/gitlab  \
-        –v ${GITLAB_DIR}/logs:/var/log/gitlab  \
-        –v ${GITLAB_DIR}/data:/var/opt/gitlab \
-        gitlab/gitlab-ce:latest
+    docker pull gitlab/gitlab-runner
+    (
+      cd conf/docker
+      docker-compose up -d
+    )
 }
 __installGitlabByYum()
 {

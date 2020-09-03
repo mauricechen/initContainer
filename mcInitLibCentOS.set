@@ -32,10 +32,10 @@ __initEnv()
     sudo yum install -y snapd
     sudo systemctl enable --now snapd.socket
     sudo ln -s /var/lib/snapd/snap /snap
-    sudo snap install shellcheck
+    #sudo snap install shellcheck
 
     #disable swap
-    sudo swapoff -a
+    #sudo swapoff -a
     sudo echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
     sudo sh -c "
      systemctl enable --now dnsmasq
