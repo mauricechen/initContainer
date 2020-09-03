@@ -13,7 +13,6 @@ __initSrvEnv()
     srvType="${1}"
     srvPort="${2}"
 
-
     srvHost=`echo $srvType.$MYDOMAIN`
     if [ "$val" == "" ]; then
         echo "$IP   $srvHost" >> /tmp/.hosts
@@ -21,28 +20,21 @@ __initSrvEnv()
         echo "$tmpIP        $srvHost"  >> /tmp/.hosts
     fi
 
+    if [ "${srvType}" == "${srvPort}" ]; then  unset srvPort ;  fi
 
-
-    if [ "${srvType}" != "${srvPort}" ]; then  srvPort${srvPort} ; fi
     if [ "${srvType}" == "gitlab" ]; then 
        echo "ServiceHost_gitlab=$srvType.$MYDOMAIN; export ServiceHost_$srvType"
-       echo "ServicePort_gitlab=9000; export ServicePort_gitlab"
-       echo "ServiceSSLPort_gitlab=9443; export ServiceSSLPort_gitlab"
-       echo "ServiceSSHPort_gitlab=9022; export ServiceSSGPort_gitlab"
-       return;
+       echo "ServicePort_gitlab=${srvPort:-9000}; export ServicePort_gitlab"
+       echo "ServiceSSLPort_gitlab=${srvPort:-9443}; export ServiceSSLPort_gitlab"
+       echo "ServiceSSHPort_gitlab=${srvPort:-9022}; export ServiceSSGPort_gitlab"
     elif [ "${srvType}" == "jenkins" ]; then 
-       echo "ServicePort_jenkins=9001; export ServicePort_jenkins"
-       echo "ServiceAgentPort_jenkins=10000; export ServiceAgentPort_jenkins"
+       echo "ServicePort_jenkins=${srvPort:-9001}; export ServicePort_jenkins"
+       echo "ServiceAgentPort_jenkins=${srvPort:-10000}; export ServiceAgentPort_jenkins"
     elif [ "${srvType}" == "harbor" ];  then 
-       echo "ServicePort_harbor=9002; export ServicePort_harbor";
+       echo "ServicePort_harbor=${srvPort:-9002}; export ServicePort_harbor";
     elif [ "${srvType}" == "registry" ];  then srvPort="9001";
     else srvPort="7999";
     fi
-
-    echo "ServiceHost_$srvType=$srvType.$MYDOMAIN; export ServiceHost_$srvType"
-    echo "ServicePort_$srvType=$srvPort; export ServicePort_$srvType"
-
-
 }
 __initEnvM()
 {
@@ -79,6 +71,7 @@ __initEnvM()
     if [ $? != 0 ]; then
         sudo /bin/su -c "echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf"
     fi;
+
 }
 
 __installEnvM()
@@ -372,12 +365,7 @@ __initHttpsCert()
 }
 __installHarborByDocker()
 {
-   sudo docker run -tid \
-          --name registry 
-          --restart=always \
-          -p ${ServicePort_harbor}:5000 \
-          -v ${HARBOR_DIR}:/var/lib/registry \
-          registry
+   sudo docker run -tid --name registry --restart=always -p ${ServicePort_harbor}:5000  -v ${HARBOR_DIR}:/var/lib/registry registry
    sudo tee /etc/docker/daemon.json<<EOF
         {
            "insecure-registries":[
