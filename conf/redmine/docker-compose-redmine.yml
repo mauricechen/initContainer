@@ -1,0 +1,54 @@
+version: '3.5'
+
+services:
+
+  redmine:
+    container_name: redmine
+    image: redmine:passenger
+    restart: always
+    volumes:
+      - /var/www/redmine/files:/usr/src/redmine/files
+      - /var/www/redmine/log:/usr/src/redmine/log
+      - /var/www/redmine/plugins:/usr/src/redmine/plugins
+      - /var/www/redmine/public/themes:/usr/src/redmine/public/themes
+    links:
+      - db
+    ports:
+      - 8080:3000
+    environment:
+      REDMINE_DB_MYSQL: db
+      REDMINE_DB_USERNAME: root
+      REDMINE_DB_PASSWORD: password
+      REDMINE_DB_ENCODING: utf8mb4
+      TZ: Asia/Taipei
+      REDMINE_EMAIL: redmine@gmail.com
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: redmine@gmail.com
+      SMTP_PASSWORD: password
+    depends_on:
+      - db
+      - memcached
+
+  db:
+    image: mysql:5.7
+    hostname: 'redminedb'
+    restart: always
+    ports:
+      - 6603:3306
+    volumes:
+      #- /var/lib/mysql
+      - mysql-data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: redmine
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+
+  memcached:
+    image: memcached
+    container_name: memcached
+    restart: always
+
+volumes:
+  mysql-data:
+    name: mysql-redmine

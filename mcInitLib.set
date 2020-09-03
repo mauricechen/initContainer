@@ -31,6 +31,7 @@ __initSrvEnv()
        echo "ServicePort_jenkins=${srvPort:-9001}; export ServicePort_jenkins"
        echo "ServiceAgentPort_jenkins=${srvPort:-10000}; export ServiceAgentPort_jenkins"
     elif [ "${srvType}" == "harbor" ];  then 
+       echo "ServiceHost_harbor=$srvType.$MYDOMAIN; export ServiceHost_harbor";
        echo "ServicePort_harbor=${srvPort:-9002}; export ServicePort_harbor";
     elif [ "${srvType}" == "registry" ];  then srvPort="9001";
     else srvPort="7999";
@@ -120,9 +121,14 @@ __configContainer()
     ${_container} config set memory 4800mb
     ${_container} config set disk-size 40gb
     #   ${_container} config set image-mirror-country tw
-    ${_container} start --profile ${_container} --alsologtostderr -v=3 --show-libmachine-logs -v5
-    #${_container} start
-    if [ $? -ne 0 ]; then echo "ERROR: ${_container} start "; exit 1; fi;
+    #${_container} start --profile ${_container} --alsologtostderr -v=3 --show-libmachine-logs -v5
+    ${_container} start
+    if [ $? -ne 0 ]; then 
+       echo "ERROR: ${_container} start "; 
+       ${_container} status
+       ${_container} stop
+       ${_container} status
+    fi;
     ${_container} addons apply admin-user
     ${_container} oc-env
     ${_container} stop
@@ -162,15 +168,25 @@ __installGitlabByYum()
 }
 __installJenkinsByDocker()
 {
+    dockerName=jenkins
+    docker ps -l |grep ${dockerName}
+    if [ $? -eq 0 ]; then return ; fi
+
     docker pull jenkinsci/blueocean
     sudo docker run -tid \
-        –hostname jenkins.${MYDOMAINE} \
-        –p ${ServicePort_jenkins}:8080  -p ${ServiceAgentPort_jenkins}:50000   \
-        –-name jenkins  –restart always  \
+        --hostname jenkins.${MYDOMAIN} \
+        -p ${ServicePort_jenkins}:8080  -p ${ServiceAgentPort_jenkins}:50000   \
+        --name ${dockerName}  --restart always  \
         -v ${JENKINS_DIR}:/var/jenkins_home   \
-        -v /var/run/docker.sock:/var/run/docker.sock \
         jenkinsci/blueocean:latest
 
+}
+__installRedmineByDocker()
+{
+    eval  "echo \"`cat conf/redmine/docker-compose-redmine.yml`\"" > .docker-compose-redmine.yml
+    redmineIP=`sudo grep "gitlab.${MYDOMAIN}" /etc/hosts |cut -d ' ' -f 1`
+    sed -i "s@redmine.${MYDOMAIN}@${redmineIP}@g" .docker-compose-redmine.yml
+    docker-compose -f .docker-compose-redmine.yml up -d 
 }
 __setProfile()
 {
@@ -365,7 +381,12 @@ __initHttpsCert()
 }
 __installHarborByDocker()
 {
-   sudo docker run -tid --name registry --restart=always -p ${ServicePort_harbor}:5000  -v ${HARBOR_DIR}:/var/lib/registry registry
+    dockerName=registry
+    docker ps -l |grep ${dockerName}
+    if [ $? -eq 0 ]; then return ; fi
+
+
+   sudo docker run -tid --name ${dockerName} --restart=always -p ${ServicePort_harbor}:5000  -v ${HARBOR_DIR}:/var/lib/registry registry
    sudo tee /etc/docker/daemon.json<<EOF
         {
            "insecure-registries":[
@@ -635,6 +656,14 @@ installDocker()
 installGitlab()
 {
     __installGitlabByDocker
+}
+installJenkins()
+{
+    __installJenkinsByDocker
+}
+installRedmine()
+{
+   __installRedmineByDocker
 }
 installMinikube()
 {
