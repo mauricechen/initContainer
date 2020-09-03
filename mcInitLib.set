@@ -142,12 +142,10 @@ __runContainerCmd()
 }
 __installGitlabByDocker()
 {
-    docker pull gitlab/gitlab-ce
-    docker pull gitlab/gitlab-runner
-    (
-      cd conf/docker
-      docker-compose up -d
-    )
+    eval  "echo \"`cat conf/gitlab/docker-compose-gitlab.yml`\"" > .docker-compose-gitlab.yml
+    gitlabIP=`sudo grep "gitlab.${MYDOMAIN}" /etc/hosts |cut -d ' ' -f 1`
+    sed -i "s@gitlab.${MYDOMAIN}@${gitlabIP}@g" .docker-compose-gitlab.yml
+    docker-compose -f .docker-compose-gitlab.yml up -d 
 }
 __installGitlabByYum()
 {

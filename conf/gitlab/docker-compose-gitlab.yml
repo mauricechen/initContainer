@@ -4,11 +4,11 @@ services:
   gitlab:
     image: gitlab/gitlab-ce:latest
     restart: always
-    container_name: "gitlab"
+    container_name: 'gitlab'
     ports:
-        - "80:80"
-        - "2222:22"
-        - "2443:443"
+        - '80:80'
+        - '2222:22'
+        - '2443:443'
     volumes:
         - ${GITLAB_DIR}/gitlab/config:/etc/gitlab
         - ${GITLAB_DIR}/gitlab/logs:/var/log/gitlab
@@ -16,17 +16,17 @@ services:
     environment:
         GITLAB_OMNIBUS_CONFIG: |
           external_url 'http://gitlab.${MYDOMAIN}'
-          gitlab_rails["time_zone"] = "Asia/Taipei"
-          gitlab_rails["gitlab_ssh_host"] = "http://gitlab.${MYDOMAIN}"
-          gitlab_rails["gitlab_shell_ssh_port"] = 2222
-          nginx["listen_port"] = 80
+          gitlab_rails['time_zone'] = 'Asia/Taipei'
+          gitlab_rails['gitlab_ssh_host'] = 'http://gitlab.${MYDOMAIN}'
+          gitlab_rails['gitlab_shell_ssh_port'] = 2222
+          nginx['listen_port'] = 80
 
   gitlab-runner:
     container_name: gitlab-runner
     image: gitlab/gitlab-runner:latest  #7
     restart: always
     extra_hosts:
-         - "somehost:gitlab.${MYDOMAIN}"
+         - 'somehost:gitlab.${MYDOMAIN}'
     volumes:
        - ${GITLAB_DIR}/gitlab-runner/config:/etc/gitlab-runner
        - /var/run/docker.sock:/var/run/docker.sock
