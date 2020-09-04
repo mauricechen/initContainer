@@ -10,6 +10,7 @@ HARBOR_DIR="/data/registry"; export HARBOR_DIR
 PROMETHEUS_DIR="/data/conf/prometheus"; export PROMETHEUS_DIR
 __initSrvEnv()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     mkdir -p tmp
     srvType="${1}"
     srvPort="${2}"
@@ -78,6 +79,7 @@ __initEnvM()
 
 __installDevelopTools()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     #sudo yum install -y java-11-openjdk-devel
     sudo yum install -y java-11-openjdk
 
@@ -146,6 +148,7 @@ __runContainerCmd()
 }
 __installGitlabByDocker()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     eval  "echo \"`cat conf/gitlab/docker-compose-gitlab.yml`\"" > tmp/.docker-compose-gitlab.yml
     gitlabIP=`sudo grep "gitlab.${MYDOMAIN}" /etc/hosts |cut -d ' ' -f 1`
     sed -i "s@gitlab.${MYDOMAIN}@${gitlabIP}@g" tmp/.docker-compose-gitlab.yml
@@ -153,6 +156,7 @@ __installGitlabByDocker()
 }
 __installGitlabByYum()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     #sudo EXTERNAL_URL="http://gitlab.example.com" yum install -y gitlab-ee
     #curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-ee/script.rpm.sh | sudo bash
     curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.rpm.sh | sudo bash
@@ -174,6 +178,7 @@ __installGitlabByYum()
 
 __installJenkinsByDocker()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     dockerName=jenkins
     docker ps -l |grep ${dockerName}
     if [ $? -eq 0 ]; then return ; fi
@@ -189,6 +194,7 @@ __installJenkinsByDocker()
 }
 __installRedmineByDocker()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     eval  "echo \"`cat conf/redmine/docker-compose-redmine.yml`\"" > tmp/.docker-compose-redmine.yml
     redmineIP=`sudo grep "gitlab.${MYDOMAIN}" /etc/hosts |cut -d ' ' -f 1`
     sed -i "s@redmine.${MYDOMAIN}@${redmineIP}@g" tmp/.docker-compose-redmine.yml
@@ -208,6 +214,7 @@ __setProfile()
 }
 __installMinikube()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installKube
 
     packageName=minikube
@@ -221,6 +228,7 @@ __installMinikube()
 
 __installMinishift()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installKube
     #install minishift
 
@@ -317,6 +325,7 @@ __genConfFile()
 }
 __installHelm3()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     if [ -f /usr/local/bin/helm ]; then
         /usr/local/bin/helm version |grep 'V3' >/dev/null
         if [ $? ]; then return 0; fi
@@ -390,6 +399,7 @@ __initHttpsCert()
 
 __installHarborByDocker()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     dockerName=registry
     docker ps -l |grep ${dockerName}
     if [ $? -eq 0 ]; then return ; fi
@@ -407,6 +417,7 @@ EOF
 }
 __installHarborByOffline()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     packageName=harbor
     url=`curl -s https://api.github.com/repos/goharbor/harbor/releases/latest |egrep -i 'browser_download_url.*offline' | cut -d '"' -f 4 | grep '\.tgz$'`
     #url="https://github.com/vmware/harbor/releases/download/v1.2.0/harbor-offline-installer-v1.2.0.tgz"
@@ -437,6 +448,7 @@ EOF
 
 __installHarborByHelm()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     eval $(minishift oc-env)
     oc login -u system:admin
     (
@@ -483,6 +495,7 @@ __checkSampleStatus()
 
 __installSample()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     echo 'init'
     __deleteSampleObj
     echo 'before'
@@ -497,6 +510,7 @@ __installSample()
 }
 __checkStatus()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     minishift version
     minishift status
     minishift ip
@@ -514,6 +528,7 @@ __checkStatus()
 }
 __installNginx()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     helm search repo nginx-ingress
     helm show values nginx-stable/nginx-ingress
     helm install gateway nginx-stable/nginx-ingress \
@@ -525,11 +540,13 @@ __installNginx()
 }
 __installHarborHelm()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installHelm3
     __installHarborByDocker
 }
 __installSeata()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     (
         git clone https://github.com/seata/seata/tree/develop/script/server
         cd ./script/server/helm/seata-server
@@ -541,6 +558,7 @@ __installSeata()
 }
 __installWordpress()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     #https://www.qikqiak.com/k8s-book/docs/31.%E9%83%A8%E7%BD%B2%20Wordpress%20%E7%A4%BA%E4%BE%8B.html`
     kubectl create namespace blog
     kubectl create -f conf/wrodpress-pod.yaml
@@ -555,10 +573,12 @@ __installWordpress()
 }
 __installNodeexporter()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     echo "Dodo"
 }
 __installPrometheusByDocker()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     (
         sudo mkdir -p $PROMETHEUS_DIR
         sudo mkdir -p $PROMETHEUS_DIR
@@ -573,6 +593,7 @@ __installPrometheusByDocker()
 }
 __installPrometheus()
 {
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     packageName=prometheus
     url=`curl -s  https://api.github.com/repos/prometheus/prometheus/releases/latest |egrep -i "browser_download_url.*${OSKernel}-amd64" | cut -d '"' -f 4 `
     pathName=`dirname $url`
@@ -625,76 +646,76 @@ EOF
 
 installSample()
 {
-    echo "====run Install: installSample $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installSample "$1"
 }
 
 installWordpress()
 {
-    echo "====run Install: installWordpress $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installWordpress
 }
 installSeata()
 {
-    echo "====run Install: installSeata $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installSeata
 }
 installNginx()
 {
-    echo "====run Install: installNginx $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installNginx
 }
 installHelm()
 {
-    echo "====run Install: installHelm $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installHelm3
 }
 
 installHarbor()
 {
-    echo "====run Install: installHarbor $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installHarborByDocker
     #__installHarborByHelm
 }
 installHarborHelm()
 {
-    echo "====run Install: installHarborHelm $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installHarborHelm
 }
 installHypervisor()
 {
-    echo "====run Install: installHypervision $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installHypervisor
 }
 installPrometheus()
 {
-    echo "====run Install: installPrometheus $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installPrometheusByDocker
 }
 installDocker()
 {
-    echo "====run Install: installDocker $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installDocker
 }
 installGitlab()
 {
-    echo "====run Install: installGitlab $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installGitlabByDocker
 }
 installJenkins()
 {
-    echo "====run Install: installJenkins $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installJenkinsByDocker
 }
 installRedmine()
 {
-    echo "====run Install: installRemine $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installRedmineByDocker
 }
 
 installMinikube()
 {
-    echo "====run Install: installMinikube $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     _container="minikube"
     DEFDRIVER=${1-docker}; export DEFDriver
 
@@ -729,7 +750,7 @@ installMinikube()
 }
 installMinishift()
 {
-    echo "====run Install: installMinishift $@"
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     _container="minishift"
     DEFDRIVER=${1-docker}; export DEFDriver
     #__InitEnv
