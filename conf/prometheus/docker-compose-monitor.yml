@@ -16,7 +16,7 @@ services:
       - ./node-exporter-record-rules.yml:/etc/prometheus/node-exporter-record-rules.yml
       - ./node-exporter-alert-rules.yml:/etc/prometheus/node-exporter-alert-rules.yml
     ports:
-      - "9090:9090"
+      - "9091:9091"
     networks:
       - monitor
     links:
