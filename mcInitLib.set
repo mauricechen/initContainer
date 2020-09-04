@@ -10,6 +10,7 @@ HARBOR_DIR="/data/registry"; export HARBOR_DIR
 PROMETHEUS_DIR="/data/conf/prometheus"; export PROMETHEUS_DIR
 __initSrvEnv()
 {
+    mkdir -p tmp
     srvType="${1}"
     srvPort="${2}"
 
@@ -22,17 +23,17 @@ __initSrvEnv()
 
     if [ "${srvType}" == "${srvPort}" ]; then  unset srvPort ;  fi
 
-    if [ "${srvType}" == "gitlab" ]; then 
-       echo "ServiceHost_gitlab=$srvType.$MYDOMAIN; export ServiceHost_$srvType"
-       echo "ServicePort_gitlab=${srvPort:-9000}; export ServicePort_gitlab"
-       echo "ServiceSSLPort_gitlab=${srvPort:-9443}; export ServiceSSLPort_gitlab"
-       echo "ServiceSSHPort_gitlab=${srvPort:-9022}; export ServiceSSGPort_gitlab"
-    elif [ "${srvType}" == "jenkins" ]; then 
-       echo "ServicePort_jenkins=${srvPort:-9001}; export ServicePort_jenkins"
-       echo "ServiceAgentPort_jenkins=${srvPort:-10000}; export ServiceAgentPort_jenkins"
-    elif [ "${srvType}" == "harbor" ];  then 
-       echo "ServiceHost_harbor=$srvType.$MYDOMAIN; export ServiceHost_harbor";
-       echo "ServicePort_harbor=${srvPort:-9002}; export ServicePort_harbor";
+    if [ "${srvType}" == "gitlab" ]; then
+        echo "ServiceHost_gitlab=$srvType.$MYDOMAIN; export ServiceHost_$srvType"
+        echo "ServicePort_gitlab=${srvPort:-9000}; export ServicePort_gitlab"
+        echo "ServiceSSLPort_gitlab=${srvPort:-9443}; export ServiceSSLPort_gitlab"
+        echo "ServiceSSHPort_gitlab=${srvPort:-9022}; export ServiceSSGPort_gitlab"
+    elif [ "${srvType}" == "jenkins" ]; then
+        echo "ServicePort_jenkins=${srvPort:-9001}; export ServicePort_jenkins"
+        echo "ServiceAgentPort_jenkins=${srvPort:-10000}; export ServiceAgentPort_jenkins"
+    elif [ "${srvType}" == "harbor" ];  then
+        echo "ServiceHost_harbor=$srvType.$MYDOMAIN; export ServiceHost_harbor";
+        echo "ServicePort_harbor=${srvPort:-9002}; export ServicePort_harbor";
     elif [ "${srvType}" == "registry" ];  then srvPort="9001";
     else srvPort="7999";
     fi
@@ -75,7 +76,7 @@ __initEnvM()
 
 }
 
-__installEnvM()
+__installDevelopTools()
 {
     #sudo yum install -y java-11-openjdk-devel
     sudo yum install -y java-11-openjdk
@@ -102,7 +103,9 @@ __installEnvM()
     mkdir -p `pwd`/tmp
 }
 __initEnvM
+__installDevelopTools
 source mcInitLib${OS}.set
+
 
 __configContainer()
 {
@@ -117,17 +120,19 @@ __configContainer()
     ${_container} addons install --defaults
     ${_container} addons enable admin-user
     #   ${_container} config set profile ${_container}
+    ${_container} config set vm-driver kvm
     ${_container} config set cpus 2
     ${_container} config set memory 4800mb
     ${_container} config set disk-size 40gb
+
     #   ${_container} config set image-mirror-country tw
     #${_container} start --profile ${_container} --alsologtostderr -v=3 --show-libmachine-logs -v5
     ${_container} start
-    if [ $? -ne 0 ]; then 
-       echo "ERROR: ${_container} start "; 
-       ${_container} status
-       ${_container} stop
-       ${_container} status
+    if [ $? -ne 0 ]; then
+        echo "ERROR: ${_container} start ";
+        ${_container} status
+        ${_container} stop
+        ${_container} status
     fi;
     ${_container} addons apply admin-user
     ${_container} oc-env
@@ -141,10 +146,10 @@ __runContainerCmd()
 }
 __installGitlabByDocker()
 {
-    eval  "echo \"`cat conf/gitlab/docker-compose-gitlab.yml`\"" > .docker-compose-gitlab.yml
+    eval  "echo \"`cat conf/gitlab/docker-compose-gitlab.yml`\"" > tmp/.docker-compose-gitlab.yml
     gitlabIP=`sudo grep "gitlab.${MYDOMAIN}" /etc/hosts |cut -d ' ' -f 1`
-    sed -i "s@gitlab.${MYDOMAIN}@${gitlabIP}@g" .docker-compose-gitlab.yml
-    docker-compose -f .docker-compose-gitlab.yml up -d 
+    sed -i "s@gitlab.${MYDOMAIN}@${gitlabIP}@g" tmp/.docker-compose-gitlab.yml
+    docker-compose -f .docker-compose-gitlab.yml up -d
 }
 __installGitlabByYum()
 {
@@ -166,6 +171,7 @@ __installGitlabByYum()
 
     sudo gitlab-ctl reconfigure
 }
+
 __installJenkinsByDocker()
 {
     dockerName=jenkins
@@ -183,10 +189,10 @@ __installJenkinsByDocker()
 }
 __installRedmineByDocker()
 {
-    eval  "echo \"`cat conf/redmine/docker-compose-redmine.yml`\"" > .docker-compose-redmine.yml
+    eval  "echo \"`cat conf/redmine/docker-compose-redmine.yml`\"" > tmp/.docker-compose-redmine.yml
     redmineIP=`sudo grep "gitlab.${MYDOMAIN}" /etc/hosts |cut -d ' ' -f 1`
-    sed -i "s@redmine.${MYDOMAIN}@${redmineIP}@g" .docker-compose-redmine.yml
-    docker-compose -f .docker-compose-redmine.yml up -d 
+    sed -i "s@redmine.${MYDOMAIN}@${redmineIP}@g" tmp/.docker-compose-redmine.yml
+    docker-compose -f tmp/.docker-compose-redmine.yml up -d
 }
 __setProfile()
 {
@@ -236,6 +242,7 @@ __installMinishift()
     minishift status
     #kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml
 }
+
 __startMinikube()
 {
     runScript=/tmp/.startMinikube.sh
@@ -245,12 +252,12 @@ __startMinikube()
 
 PATH=$PATH
 minikube start --profile minishift --alsologtostderr -v=3 --show-libmachine-logs -v5
-if [ $? -ne 0 ]; then 
+if [ $? -ne 0 ]; then
    minikube stop
-   minikube status 
+   minikube status
    minikube start --profile minishift --alsologtostderr -v=3 --show-libmachine-logs -v5
-   if [ $? -ne 0 ]; then 
-     echo "ERROR: ${_container} start "; exit 1; 
+   if [ $? -ne 0 ]; then
+     echo "ERROR: ${_container} start "; exit 1;
    fi
 fi;
 kubectl config use-context minishift
@@ -277,13 +284,13 @@ __startMinishift()
 PATH=$PATH
 minishift status
 minishift start --profile minishift --show-libmachine-logs -v5 --alsologtostderr -v=5
-if [ $? -ne 0 ]; then 
+if [ $? -ne 0 ]; then
    minishift stop
    minishift status
    minishift start --profile minishift --show-libmachine-logs -v5 --alsologtostderr -v=5
-   if [ $? -ne 0 ]; then 
-     echo "ERROR: ${_container} start "; 
-     exit 1; 
+   if [ $? -ne 0 ]; then
+     echo "ERROR: ${_container} start ";
+     exit 1;
    fi
 fi;
 minishift status
@@ -301,6 +308,7 @@ EOF
     #__runContainerCmd  minishift dashboard
 
 }
+
 __genConfFile()
 {
     inConfFile="$1"
@@ -335,7 +343,7 @@ __installHelm3()
     helm repo list
     echo "add local repo"
     (
-        mkdir -p /dcos/appstore/local-repo
+        sudo mkdir -p /dcos/appstore/local-repo
         nohup helm serve --address 0.0.0.0:8879 --repo-path /dcos/appstore/local-repo &
         helm repo add local-repo http://${MYDOMAIN}:8879   "local-repo" has been added to your repositorie
 
@@ -379,6 +387,7 @@ __initHttpsCert()
         fi
     )
 }
+
 __installHarborByDocker()
 {
     dockerName=registry
@@ -386,8 +395,8 @@ __installHarborByDocker()
     if [ $? -eq 0 ]; then return ; fi
 
 
-   sudo docker run -tid --name ${dockerName} --restart=always -p ${ServicePort_harbor}:5000  -v ${HARBOR_DIR}:/var/lib/registry registry
-   sudo tee /etc/docker/daemon.json<<EOF
+    sudo docker run -tid --name ${dockerName} --restart=always -p ${ServicePort_harbor}:5000  -v ${HARBOR_DIR}:/var/lib/registry registry
+    sudo tee /etc/docker/daemon.json<<EOF
         {
            "insecure-registries":[
               "$ServiceHost_harbor:$ServicePort_harbor"
@@ -471,6 +480,7 @@ __checkSampleStatus()
     kubectl get deploy
     kubectl get ingress
 }
+
 __installSample()
 {
     echo 'init'
@@ -550,15 +560,15 @@ __installNodeexporter()
 __installPrometheusByDocker()
 {
     (
-    sudo mkdir -p $PROMETHEUS_DIR
-    sudo mkdir -p $PROMETHEUS_DIR
-    sudo cp conf/prometheus/*.yml $PROMETHEUS_DIR 
+        sudo mkdir -p $PROMETHEUS_DIR
+        sudo mkdir -p $PROMETHEUS_DIR
+        sudo cp conf/prometheus/*.yml $PROMETHEUS_DIR
 
-    sudo docker pull prom/node-exporter
-    sudo docker pull prom/prometheus
-    sudo docker pull grafana/grafana
-    sudo docker pull prom/alertmanager
-    docker-compose -f $PROMETHEUS_DIR/docker-compose-monitor.yml up -d 
+        sudo docker pull prom/node-exporter
+        sudo docker pull prom/prometheus
+        sudo docker pull grafana/grafana
+        sudo docker pull prom/alertmanager
+        docker-compose -f $PROMETHEUS_DIR/docker-compose-monitor.yml up -d
     )
 }
 __installPrometheus()
@@ -612,61 +622,79 @@ EOF
     )
 
 }
+
 installSample()
 {
+    echo "====run Install: installSample $@"
     __installSample "$1"
 }
+
 installWordpress()
 {
+    echo "====run Install: installWordpress $@"
     __installWordpress
 }
 installSeata()
 {
+    echo "====run Install: installSeata $@"
     __installSeata
 }
-#installNginx()
-#{
-#  __installNginx()
-#}
+installNginx()
+{
+    echo "====run Install: installNginx $@"
+    __installNginx
+}
 installHelm()
 {
+    echo "====run Install: installHelm $@"
     __installHelm3
 }
+
 installHarbor()
 {
+    echo "====run Install: installHarbor $@"
     __installHarborByDocker
     #__installHarborByHelm
 }
 installHarborHelm()
 {
+    echo "====run Install: installHarborHelm $@"
     __installHarborHelm
 }
 installHypervisor()
 {
+    echo "====run Install: installHypervision $@"
     __installHypervisor
 }
 installPrometheus()
 {
+    echo "====run Install: installPrometheus $@"
     __installPrometheusByDocker
 }
 installDocker()
 {
+    echo "====run Install: installDocker $@"
     __installDocker
 }
 installGitlab()
 {
+    echo "====run Install: installGitlab $@"
     __installGitlabByDocker
 }
 installJenkins()
 {
+    echo "====run Install: installJenkins $@"
     __installJenkinsByDocker
 }
 installRedmine()
 {
-   __installRedmineByDocker
+    echo "====run Install: installRemine $@"
+    __installRedmineByDocker
 }
+
 installMinikube()
 {
+    echo "====run Install: installMinikube $@"
     _container="minikube"
     DEFDRIVER=${1-docker}; export DEFDriver
 
@@ -701,6 +729,7 @@ installMinikube()
 }
 installMinishift()
 {
+    echo "====run Install: installMinishift $@"
     _container="minishift"
     DEFDRIVER=${1-docker}; export DEFDriver
     #__InitEnv

@@ -36,7 +36,7 @@ __initEnv()
 
     #disable swap
     #sudo swapoff -a
-    sudo echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
+    echo 1 |sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables
     sudo sh -c "
      systemctl enable --now dnsmasq
      systemctl start dnsmasq
@@ -50,11 +50,11 @@ __initEnv()
 __installHypervisor()
 {
     sudo yum -y install epel-release
-    sudo yum -y install libvirt qemu-kvm virt-install virt-top libguestfs-tools bridge-utils
+    sudo yum -y install libvirt qemu-kvm virt-install virt-top libguestfs-tools bridge-utils libvirt-daemon-kvm
     sudo lsmod | grep kvm
     sudo systemctl start libvirtd
     sudo systemctl enable --now libvirtd
-
+    sudo usermod -a -G libvirt root
     sudo usermod -a -G libvirt $(whoami)
     newgrp libvirt <<EOF
 exit
@@ -133,17 +133,17 @@ EOF
     #	[registries.insecure]
     #	registries = ['172.30.0.0/16']
     #	EOF
-#    sudo tee /etc/docker/daemon.json<<EOF
-#	{
-#	   "insecure-registries":[
-#	      "$ServiceHost_registry:$ServicePort_registry"
-#	   ]
-#	}
-#EOF
+    #    sudo tee /etc/docker/daemon.json<<EOF
+    #	{
+    #	   "insecure-registries":[
+    #	      "$ServiceHost_registry:$ServicePort_registry"
+    #	   ]
+    #	}
+    #EOF
     #
     sudo mkdir -p /opt/docker/registry/certs
-    cat conf/ssl.conf |sed -e "s@DNS.3 =.*@DNS.3 = $OS_IP@g" tmp/ssl.conf
-    sudo openssl req -x509 -days 3650 -nodes -newkey rsa:2048 -keyout /opt/docker/registry/certs/domain.key -out /opt/docker/registry/certs/domain.crt -config tmp/ssl.conf
+    cat conf/ssl.conf |sed -e "s@DNS.3 =.*@DNS.3 = $OS_IP@g" > tmp/.ssl.conf
+    sudo openssl req -x509 -days 3650 -nodes -newkey rsa:2048 -keyout /opt/docker/registry/certs/domain.key -out /opt/docker/registry/certs/domain.crt -config tmp/.ssl.conf
 
     #
     sudo systemctl daemon-reload
@@ -204,7 +204,7 @@ enabled=1
 gpgcheck=1
 EOF
     sudo mv vmware.repo /etc/yum.repos.d/vmware.repo
-    sudo yum install -y vmw-gl
+    sudo yum install -y open-vm-tools vmw-glx
 
 }
 

@@ -3,12 +3,16 @@ container=$1
 
 _runCommand()
 {
-  _command="${1}"
-  echo =======; echo "$_command"
-  eval "${_command}"
-  echo;
+    _command="${1}"
+    echo "======= cmd: $_command ============="
+    eval "${_command}"
+    echo;
 }
 
+_runCommand "virsh version"
+_runCommand "dnsmasq --version"
+_runCommand "docker-machine --version"
+_runCommand "virsh --connect qemu:///system net-list"
 _runCommand "${container} version"
 _runCommand "kubectl version"
 _runCommand "kubectl coluster-info"
