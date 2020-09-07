@@ -88,8 +88,6 @@ __installDevelopTools()
     #update-alternatives --install /usr/bin/python python /usr/bin/python3.6 1
     #update-alternatives --display python
 
-    sudo rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO
-    curl -s https://mirror.go-repo.io/centos/go-repo.repo | sudo tee /etc/yum.repos.d/go-repo.repo
     sudo yum install -y golang
 
     curl -sL https://rpm.nodesource.com/setup_10.x | sudo bash -
@@ -785,7 +783,8 @@ installMinishift()
     __configContainer "$_container"
     __startMinishift
     __installHarborHelm "$_container"
-    __installGitlabByDocker
-    __installJenkinsByDocker
-    __installPrometheusByDocker
+    __installGitlab
+    __installJenkins
+    __installRedmine
+    __installPrometheus
 }
