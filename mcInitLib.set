@@ -8,9 +8,10 @@ GITLAB_DIR="/data/gitlab"; export GITLAB_DIR
 JENKINS_DIR="/data/jenkins"; export JENKINS_DIR
 HARBOR_DIR="/data/registry"; export HARBOR_DIR
 PROMETHEUS_DIR="/data/conf/prometheus"; export PROMETHEUS_DIR
+. conf/configure
+
 __initSrvEnv()
 {
-    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     mkdir -p tmp
     srvType="${1}"
     srvPort="${2}"
@@ -52,16 +53,16 @@ __initEnvM()
     if [ -d $GITLAB_DIR ]; then mkdir -p $GITLAB_DIR ; fi
     if [ -d $JENKINS_DIR ]; then mkdir -p $JENKINS_DIR ; fi
     mkdir -p $PACKAGE_DIR
-    INTERFACE=`grep INTERFACE= conf/hosts.cfg|cut -d= -f 2`
-    MYDOMAIN=`grep MYDOMAIN= conf/hosts.cfg|cut -d= -f 2`; export MYDOMAIN
+    INTERFACE=`grep INTERFACE= conf/configure|cut -d= -f 2`
+    MYDOMAIN=`grep MYDOMAIN= conf/configure|cut -d= -f 2`; export MYDOMAIN
     #IP=`sudo nmcli connection show $INTERFACE | grep ipv4.address|cut -d':' -f2|sed -e 's@ @@g' -e 's@/.*@@g'`
     IP=`hostname -I|tr ' ' '\n'|egrep -v ':|127'|head -1`
     OS_IP=$IP ; export OS_IP
     egrep -v "$MYDOMAIN|master" /etc/hosts > /tmp/.hosts
     echo "$IP	master" >> /tmp/.hosts
     echo "$IP	$MYDOMAIN" >> /tmp/.hosts
-    egrep -v "MYDOMAIN=|SERVICE_LIST=|TYPE=|INTERFACE=" conf/hosts.cfg > /tmp/.ServiceCfg
-    declare -a list=(`grep 'SERVICE_LIST=' conf/hosts.cfg|sed -e 's@.*=@@g'`)
+    egrep -v "MYDOMAIN=|SERVICE_LIST=|DOMAIN_TYPE=|INTERFACE=" conf/configure > /tmp/.ServiceCfg
+    declare -a list=(`grep 'SERVICE_LIST=' conf/configure|sed -e 's@.*=@@g'`)
     for i in "${list[@]}"; do
         val=`grep "$i" /tmp/.ServiceCfg`
         srvType=`echo $i|cut -d: -f1`
@@ -74,12 +75,16 @@ __initEnvM()
     if [ $? != 0 ]; then
         sudo /bin/su -c "echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf"
     fi;
-
+    sudo grep "vm.max_map_count = 655360" /etc/sysctl.conf 
+    if [ $? -ne 0 ]; then 
+      sudo echo "vm.max_map_count = 655360" >> /etc/sysctl.conf
+    fi
 }
 
 __installDevelopTools()
 {
     echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
+    sudo yum install -y expect httpd-tools
     #sudo yum install -y java-11-openjdk-devel
     sudo yum install -y java-11-openjdk
 
@@ -193,10 +198,22 @@ __installJenkinsByDocker()
 __installRedmineByDocker()
 {
     echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
+    
     eval  "echo \"`cat conf/redmine/docker-compose-redmine.yml`\"" > tmp/.docker-compose-redmine.yml
     redmineIP=`sudo grep "gitlab.${MYDOMAIN}" /etc/hosts |cut -d ' ' -f 1`
     sed -i "s@redmine.${MYDOMAIN}@${redmineIP}@g" tmp/.docker-compose-redmine.yml
     docker-compose -f tmp/.docker-compose-redmine.yml up -d
+}
+__installGitlabJenkinsSonarQubeByDocker
+{
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
+    (
+      cp -R conf/gerrit-SonarQube tmp/
+      cd tmp/gerrit-SonarQube
+      eval  "echo \"`cat docker-compose-gerrit.yaml`\"" > .docker-compose-gerrit.yml
+      sudo ./init_devops_system_centos7.sh
+      docker-compose -f .docker-compose-gerrit.yml up -d
+    )
 }
 __setProfile()
 {
@@ -604,11 +621,11 @@ __installPrometheus()
     (
         mkdir -p tmp;tar -C `pwd`/tmp -zxvf $PACKAGE_DIR/${name}
         cd `pwd`/tmp/prometheus*/
-        mv prometheus promtool /usr/local/bin/
-        mv prometheus.yml  /etc/prometheus/prometheus.yml
-        mv consoles/ console_libraries/ /etc/prometheus/
+        sudo mv prometheus promtool /usr/local/bin/
+        sudo mv prometheus.yml  /etc/prometheus/prometheus.yml
+        sudo mv consoles/ console_libraries/ /etc/prometheus/
 
-        cat <<EOF > prometheus.service
+        sudo cat <<EOF > prometheus.service
 [Unit]
 Description=Prometheus
 Documentation=https://prometheus.io/docs/introduction/overview/
@@ -710,12 +727,17 @@ installRedmine()
     echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     __installRedmineByDocker
 }
+__installGitlabJenkinsSonarQube()
+{
+    echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
+    __installGitlabJenkinsSonarQubeByDocker
+}
 
 installMinikube()
 {
     echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     _container="minikube"
-    DEFDRIVER=${1-docker}; export DEFDriver
+    #DEFDRIVER=${1-docker}; export DEFDriver
 
     #__InitEnv
     __initEnv
@@ -750,7 +772,7 @@ installMinishift()
 {
     echo "====run Install: ${FUNCNAME[ 0 ]}  ${@}"
     _container="minishift"
-    DEFDRIVER=${1-docker}; export DEFDriver
+    #DEFDRIVER=${1-docker}; export DEFDriver
     #__InitEnv
     __initEnv
 
@@ -783,8 +805,13 @@ installMinishift()
     __configContainer "$_container"
     __startMinishift
     __installHarborHelm "$_container"
-    __installGitlab
-    __installJenkins
+    echo "${@}"|egrep -e "gerrit"
+    if [ "$1"  ]; then 
+       __installGitlab
+       __installJenkins
+    else
+       __installGitlabJenkinsSonarQube
+    fi
     __installRedmine
     __installPrometheus
 }

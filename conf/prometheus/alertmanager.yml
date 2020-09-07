@@ -1,9 +1,9 @@
 global:
   resolve_timeout: 5m
   smtp_smarthost: 'smtp.gmail.com:578'
-  smtp_from: 'maurice.chen@mitac.com.tw'
-  smtp_auth_username: 'maurice.chen@mitac.com.tw'
-  smtp_auth_password: 'password'
+  smtp_from: '${SMTP_USER}'
+  smtp_auth_username: '${SMTP_USER}'
+  smtp_auth_password: '${SMTP_PASS}`'
   smtp_require_tls: false
 
 route:

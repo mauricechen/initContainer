@@ -4,7 +4,7 @@ __initEnv()
     sudo yum clean all
     if [ `echo "$PATH"|grep '/usr/bin'` > /dev/null ] ; then PATH=$PATH:/usr/bin; fi;
     if [ `echo "$PATH"|grep '/usr/local/bin'` > /dev/null ] ; then PATH=$PATH:/usr/local/bin; fi;
-    sudo yum install -y curl, policycoreutils-python openssh-server openssh-clients wget tar postfix openssl openssl-devel
+    sudo yum install -y curl policycoreutils-python openssh-server openssh-clients wget tar postfix openssl openssl-devel
     sudo yum update -y openssl openssl-devel
     sudo yum groupinstall -y 'X Window System' 'GNOME'
     sudo yum install -y firefox epel-release.noarch yum-utils device-mapper-persistent-data lvm2 conntrack

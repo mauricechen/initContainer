@@ -70,9 +70,9 @@ services:
       - GITLAB_NOTIFY_ON_BROKEN_BUILDS=true
       - GITLAB_NOTIFY_PUSHER=false
 
-      - GITLAB_EMAIL=maurice.chen@mitac.com.tw
-      - GITLAB_EMAIL_REPLY_TO=maurice.chen@mitac.com.tw
-      - GITLAB_INCOMING_EMAIL_ADDRESS=maurice.chen@mitac.com.tw
+      - GITLAB_EMAIL=${SMTP_USER}
+      - GITLAB_EMAIL_REPLY_TO=${SMTP_USER}
+      - GITLAB_INCOMING_EMAIL_ADDRESS=${SMTP_USER}
 
       - GITLAB_BACKUP_SCHEDULE=daily
       - GITLAB_BACKUP_TIME=01:00
@@ -81,16 +81,16 @@ services:
       - SMTP_DOMAIN=www.mitac.com.tw
       - SMTP_HOST=smtp.gmail.com
       - SMTP_PORT=587
-      - SMTP_USER=maurice.chen@mitac.com.tw
-      - SMTP_PASS=password
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
       - SMTP_STARTTLS=true
       - SMTP_AUTHENTICATION=login
 
       - IMAP_ENABLED=false
       - IMAP_HOST=imap.gmail.com
       - IMAP_PORT=993
-      - IMAP_USER=maurice.chen@mitac.com.tw
-      - IMAP_PASS=password
+      - IMAP_USER=${SMTP_USER}
+      - IMAP_PASS=${SMTP_PASS}
       - IMAP_SSL=true
       - IMAP_STARTTLS=false
 

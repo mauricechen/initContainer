@@ -1,1 +1,9 @@
+MYDOMAIN=maurice.chen.idv
+DOMAIN_TYPE=SINGLE
+SERVICE_LIST=registry harbor jenkins gitlab
+INTERFACE=ens33
+SMTP_USER=maurice.chen@mitac.com.tw
+SMTP_PASS=password
 
+export MYDOMAIN SERVICE_LIST DOMAIN_TYPE INTERFACE
+export SMTP_USER SMTP_PASS
